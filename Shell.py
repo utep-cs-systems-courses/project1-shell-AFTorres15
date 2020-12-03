@@ -2,11 +2,13 @@ import os
 import sys
 import re
 
+
 def change_directory(user_input_array):
     try:
         os.chdir(user_input_array[1])
     except FileNotFoundError:
         pass
+
 
 def list_directory(user_input_array):
     # print("files and directories in ", os.listdir("/"))
@@ -20,6 +22,7 @@ def list_directory(user_input_array):
     for file in dirs:
         print(file)
 
+
 def redirection(user_input_array):
     if '>'in user_input_array:
         os.close(1)
@@ -31,6 +34,7 @@ def redirection(user_input_array):
         os.open(user_input_array[user_input_array.index('<')+1], os.O_RDONLY)
         do_Commands(user_input_array[0:user_input_array.index('<')])
 
+
 def do_Commands(user_input_array):
     for dir in re.split(":", os.environ['PATH']):
         program = "%s/%s" % (dir, user_input_array[0])
@@ -40,6 +44,32 @@ def do_Commands(user_input_array):
             pass
     os.write(2, ("Error: Command:'%s' not found." % user_input_array[0]).encode())
     sys.exit(1)
+
+def pipe_work(user_input_array):
+    read_side = user_input_array[user_input_array.index('|')+1:]
+    write_side = user_input_array[0:user_input_array.index('|')]
+    piper, pipew = os.pipe()
+    for f in (piper, pipew):
+        os.set_inheritable(f, True)
+    pipe_rc = os.fork()
+    if pipe_rc == 0:
+        os.close(1)
+        os.dup(pipew)
+        os.set_inheritable(1, True)
+        for fd in (piper, pipew):
+            os.close(fd)
+        do_Commands(write_side)
+        sys.exit(1)
+    else:
+        os.close(0)
+        os.dup(piper)
+        os.set_inheritable(0, True)
+        for fd in (piper, pipew):
+            os.close(fd)
+        if "|" in read_side:
+            pipe_work(read_side)
+        do_Commands(read_side)
+
 while True:
     # requirement 1 make $ as ps1
     if 'PS1' not in os.environ:
@@ -60,6 +90,10 @@ while True:
     # requirement 4 part b change directory
     elif "cd" in user_input_array[0]:
         change_directory(user_input_array)
+
+    elif "|" in user_input_array:
+        # hey its a pipe
+        pipe_work(user_input_array)
 
     elif '>' in user_input_array or '<' in user_input_array:
         redirection(user_input_array)
